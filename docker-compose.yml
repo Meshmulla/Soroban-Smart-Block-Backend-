@@ -1,0 +1,52 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: soroban_explorer
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - '3000:3000'
+    environment:
+      DATABASE_URL: postgresql://postgres:password@db:5432/soroban_explorer
+      STELLAR_NETWORK: testnet
+      STELLAR_RPC_URL: https://soroban-testnet.stellar.org
+      HORIZON_URL: https://horizon-testnet.stellar.org
+      NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && node dist/index.js"
+
+  indexer:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://postgres:password@db:5432/soroban_explorer
+      STELLAR_NETWORK: testnet
+      STELLAR_RPC_URL: https://soroban-testnet.stellar.org
+      HORIZON_URL: https://horizon-testnet.stellar.org
+      NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+      INDEXER_POLL_INTERVAL_MS: 5000
+      INDEXER_BATCH_SIZE: 100
+    depends_on:
+      db:
+        condition: service_healthy
+    command: node dist/indexer/run.js
+
+volumes:
+  pgdata:

@@ -1,0 +1,80 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Contract {
+  id          String   @id @default(cuid())
+  address     String   @unique
+  name        String?
+  description String?
+  abi         Json?    // ABI-like metadata: functions, events, types
+  isToken     Boolean  @default(false)
+  tokenSymbol String?
+  tokenName   String?
+  tokenDecimals Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transactions Transaction[]
+  events       Event[]
+
+  @@index([address])
+}
+
+model Transaction {
+  id              String   @id @default(cuid())
+  hash            String   @unique
+  ledger          Int
+  ledgerCloseTime DateTime
+  sourceAccount   String
+  contractAddress String?
+  functionName    String?
+  functionArgs    Json?    // decoded args
+  rawXdr          String
+  status          String   // success | failed
+  humanReadable   String?  // "Address X swapped 100 USDC → 98.7 XLM"
+  feeCharged      String?
+  createdAt       DateTime @default(now())
+
+  contract Contract? @relation(fields: [contractAddress], references: [address])
+  events   Event[]
+
+  @@index([hash])
+  @@index([sourceAccount])
+  @@index([contractAddress])
+  @@index([ledger])
+}
+
+model Event {
+  id              String   @id @default(cuid())
+  transactionHash String
+  contractAddress String
+  eventType       String   // transfer | swap | mint | burn | custom
+  topics          Json     // raw topics
+  data            Json     // raw data
+  decoded         Json?    // human-readable decoded event
+  ledger          Int
+  ledgerCloseTime DateTime
+  createdAt       DateTime @default(now())
+
+  transaction Transaction @relation(fields: [transactionHash], references: [hash])
+  contract    Contract    @relation(fields: [contractAddress], references: [address])
+
+  @@index([transactionHash])
+  @@index([contractAddress])
+  @@index([eventType])
+  @@index([ledger])
+}
+
+model IndexerState {
+  id            String   @id @default("singleton")
+  lastLedger    Int      @default(0)
+  updatedAt     DateTime @updatedAt
+}
