@@ -13,6 +13,8 @@ import { nftRouter } from './nft';
 import { alertsRouter } from './alerts';
 import { assetsRouter } from './assets';
 import { sseRouter } from './sse';
+import { graphRouter } from './graph';
+import { virtualListRouter } from './virtualList';
 
 export const router = Router();
 
@@ -30,3 +32,5 @@ router.use('/nft', nftRouter);
 router.use('/alerts', alertsRouter);
 router.use('/assets', assetsRouter);
 router.use('/sse', sseRouter);
+router.use('/graph', graphRouter);
+router.use('/virtual-list', virtualListRouter);
