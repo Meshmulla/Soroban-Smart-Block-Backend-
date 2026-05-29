@@ -82,6 +82,7 @@ model Transaction {
   failureReason   String?  // #49: human-readable failure explanation
   flashLoanAlert  Boolean  @default(false) // #137: flash loan attack detected
   reentrantAlert  Boolean  @default(false) // re-entrancy / drain attack detected
+  freezeViolation Boolean  @default(false) // CAP-0077: touches a consensus-frozen ledger key
   createdAt       DateTime @default(now())
 
   ledger   Ledger    @relation(fields: [ledgerSequence], references: [sequence])
@@ -591,6 +592,37 @@ model VolumeAlert {
   @@index([contractAddress])
   @@index([detectedAt])
   @@index([zScore])
+}
+
+// CAP-0077: Consensus-driven frozen ledger keys
+model FrozenLedgerKey {
+  id              String   @id @default(cuid())
+  ledgerKey       String   @unique  // base64 XDR of the LedgerKey quarantined by validators
+  contractAddress String?           // extracted contract address (if contractData/contractCode key)
+  frozenAtLedger  Int               // ledger sequence when freeze was detected
+  frozenAtTime    DateTime          // ledger close time of freeze
+  reason          String?           // optional human-readable reason from validator vote
+  active          Boolean  @default(true)  // false = thawed / lifted
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([contractAddress])
+  @@index([active])
+  @@index([frozenAtLedger])
+}
+
+// Transactions that touched a consensus-frozen ledger key
+model FreezeViolation {
+  id              String   @id @default(cuid())
+  transactionHash String   @unique
+  contractAddress String?
+  ledgerSequence  Int
+  ledgerCloseTime DateTime
+  frozenKeys      Json     // array of ledgerKey strings that were touched
+  createdAt       DateTime @default(now())
+
+  @@index([contractAddress])
+  @@index([ledgerSequence])
 }
 
 // i18n translation dictionary
