@@ -2,6 +2,7 @@ import { xdr } from '@stellar/stellar-sdk';
 import { prismaWrite as prisma } from '../db';
 import { decodeEvent } from './decoder';
 import { fetchEvents, LedgerEvent } from './rpc';
+import { trackTrustlineEvent } from './sac-trustline-mapper';
 import { broadcastEvent } from '../ws/eventBroadcaster';
 import { broadcastSSEEvent } from '../api/sse';
 import { barrierUpsertContract, barrierUpsertEvent } from './writeBarrier';
@@ -130,6 +131,21 @@ async function storeEvent(event: LedgerEvent): Promise<number> {
       ledgerCloseTime: event.ledgerCloseTime,
     },
   });
+
+  // CAP-0073: Track trustline events from SAC contracts (non-blocking)
+  trackTrustlineEvent(
+    event.transactionHash,
+    event.contractId,
+    txExists.sourceAccount,
+    eventType,
+    topicSymbol,
+    decoded as Record<string, unknown> | null,
+    event.ledgerSequence,
+    event.ledgerCloseTime,
+    null,
+  ).catch((err) =>
+    console.warn(`[sac-trustline/event] tracking failed for ${event.transactionHash}:`, err),
+  );
 
   // #136: Monitor for whale transactions
   const whaleWatcher = getWhaleWatcher();

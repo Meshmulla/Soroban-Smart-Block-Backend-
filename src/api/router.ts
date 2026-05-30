@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { i18nRouter } from './i18n';
 import { transactionRouter } from './transactions';
 import { eventRouter } from './events';
 import { contractRouter } from './contracts';
@@ -21,6 +22,7 @@ import { webhooksRouter } from './webhooks';
 import { analyticsRouter } from './analytics';
 import { portfolioRouter } from './portfolio';
 import { exportsRouter } from './exports';
+import { syncStateRouter } from './sync-state';
 import { yieldDistributionRouter } from './yield-distribution';
 
 export const router = Router();
@@ -47,4 +49,5 @@ router.use('/webhooks', webhooksRouter);
 router.use('/analytics', analyticsRouter);
 router.use('/portfolio', portfolioRouter);
 router.use('/exports', exportsRouter);
+router.use('/sync-state', syncStateRouter);
 router.use('/yield-distributions', yieldDistributionRouter);
