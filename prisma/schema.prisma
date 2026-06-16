@@ -272,6 +272,88 @@ model ContractFactory {
   @@index([creationLedgerSequence])
 }
 
+model GovernanceContract {
+  id              String   @id @default(cuid())
+  contractAddress String   @unique
+  governanceType  String   @default("token_based")
+  votingToken     String?
+  detectedAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  proposals GovernanceProposal[] @relation("ContractProposals")
+  votes     GovernanceVote[]     @relation("ContractVotes")
+  delegates GovernanceDelegate[] @relation("ContractDelegates")
+
+  @@index([contractAddress])
+  @@index([governanceType])
+}
+
+model GovernanceProposal {
+  id               String   @id @default(cuid())
+  contractAddress  String
+  proposalId       String
+  proposer         String
+  title            String?
+  description      String?
+  targets          Json?
+  startBlock       Int
+  endBlock         Int
+  votesFor         String   @default("0")
+  votesAgainst     String   @default("0")
+  votesAbstain     String   @default("0")
+  quorum           String?
+  status           String
+  executedAt       DateTime?
+  executionTxHash  String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  contract GovernanceContract @relation("ContractProposals", fields: [contractAddress], references: [contractAddress])
+  votes    GovernanceVote[]   @relation("ProposalVotes")
+
+  @@unique([contractAddress, proposalId])
+  @@index([status])
+  @@index([contractAddress, status])
+  @@index([contractAddress])
+}
+
+model GovernanceVote {
+  id              String   @id @default(cuid())
+  contractAddress String
+  proposalId      String
+  voter           String
+  weight          String   @default("0")
+  support         String
+  reason          String?
+  transactionHash String?
+  ledgerSequence  Int
+  createdAt       DateTime @default(now())
+
+  contract GovernanceContract @relation("ContractVotes", fields: [contractAddress], references: [contractAddress])
+  proposal GovernanceProposal  @relation("ProposalVotes", fields: [contractAddress, proposalId], references: [contractAddress, proposalId], onDelete: Cascade)
+
+  @@unique([contractAddress, proposalId, voter])
+  @@index([contractAddress, proposalId])
+  @@index([voter])
+}
+
+model GovernanceDelegate {
+  id              String   @id @default(cuid())
+  contractAddress String
+  delegatee       String
+  delegatedVotes  String   @default("0")
+  delegators      Int      @default(0)
+  proposalsVoted  Int      @default(0)
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  contract GovernanceContract @relation("ContractDelegates", fields: [contractAddress], references: [contractAddress])
+
+  @@unique([contractAddress, delegatee])
+  @@index([contractAddress])
+  @@index([delegatee])
+}
+
 model ApiKey {
   id         String   @id @default(cuid())
   key        String   @unique

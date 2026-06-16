@@ -1,8 +1,10 @@
-import { createClient, type RedisClientType } from 'redis';
+/// <reference path="./types/redis.d.ts" />
 import { config } from './config';
 
 const CACHE_URL = config.cacheUrl ?? 'memory://';
 const USE_REDIS = CACHE_URL !== '' && !CACHE_URL.startsWith('memory://');
+
+type RedisClientType = any;
 
 interface MemoryEntry {
   payload: string;
@@ -22,8 +24,9 @@ async function getRedisClient(): Promise<RedisClientType | null> {
   if (redisClient) return redisClient;
 
   try {
+    const { createClient } = await import('redis');
     const client = createClient({ url: CACHE_URL });
-    client.on('error', (err) => {
+    client.on('error', (err: unknown) => {
       console.error('[cache] Redis client error:', err);
       redisAvailable = false;
     });
@@ -32,7 +35,7 @@ async function getRedisClient(): Promise<RedisClientType | null> {
     redisAvailable = true;
     console.log('[cache] Connected to Redis cache');
     return redisClient;
-  } catch (err) {
+  } catch (err: unknown) {
     console.warn('[cache] Could not connect to Redis, falling back to in-memory cache:', err);
     redisAvailable = false;
     return null;

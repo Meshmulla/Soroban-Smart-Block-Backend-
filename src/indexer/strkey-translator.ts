@@ -78,18 +78,16 @@ export function translateAddress(address: string): TranslatedAddress {
   // ── M-address: CAP-0079 muxed account ────────────────────────────────────
   if (trimmed.startsWith('M')) {
     try {
-      if (StrKey.isValidMuxedAccount(trimmed)) {
-        const muxed = MuxedAccount.fromAddress(trimmed, '0');
-        const masterKey = muxed.baseAccount().accountId();
-        const muxId = muxed.id();
-        return {
-          original: trimmed,
-          kind: 'muxed',
-          masterKey,
-          muxId: muxId !== undefined ? String(muxId) : null,
-          contractAddress: null,
-        };
-      }
+      const muxed = MuxedAccount.fromAddress(trimmed, '0');
+      const masterKey = muxed.baseAccount().accountId();
+      const muxId = muxed.id();
+      return {
+        original: trimmed,
+        kind: 'muxed',
+        masterKey,
+        muxId: muxId !== undefined ? String(muxId) : null,
+        contractAddress: null,
+      };
     } catch {
       // fall through to unknown
     }

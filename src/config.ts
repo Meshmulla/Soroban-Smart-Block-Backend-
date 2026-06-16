@@ -1,4 +1,4 @@
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 import { getProfile, type NetworkProfile } from './profiles';
 
 // Load the profile-specific env file first, then fall back to .env

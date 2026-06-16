@@ -197,5 +197,17 @@ async function storeEvent(event: LedgerEvent): Promise<number> {
     console.error('[webhook] dispatch error:', err),
   );
 
+  // Track governance-related events and proposals
+  import('./governance').then(({ processGovernanceEvent }) =>
+    processGovernanceEvent(
+      event,
+      eventType,
+      topicSymbol,
+      decoded as Record<string, unknown>,
+      event.transactionHash,
+      txExists.sourceAccount,
+    ).catch((err) => console.error('[governance] processing error:', err)),
+  ).catch((err) => console.error('[governance] loader error:', err));
+
   return 1;
 }
