@@ -24,6 +24,8 @@ import { startGasAnalyticsScheduler } from './indexer/gasAnalytics';
 import { startPortfolioScanner } from './indexer/portfolioScanner';
 import { startVolumeAlertScheduler } from './indexer/volumeAlertRunner';
 import { startSystemicMonitor } from './indexer/systemicMonitor';
+import { errorHandler } from './middleware/errorHandler';
+import { logger } from './logger';
 
 const app = express();
 
@@ -55,6 +57,7 @@ app.get('/metrics', async (_req, res) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', network: config.stellarNetwork }));
 
+app.use(errorHandler);
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 
 async function main() {
@@ -63,12 +66,12 @@ async function main() {
   await prisma.$connect();
   dbConnectionStatus.set(1);
   if (!process.env.DISABLE_INDEXER) {
-    startIndexerService().catch((err) => console.error('Indexer service failed:', err));
+    startIndexerService().catch((err) => logger.error('Indexer service failed', { error: String(err) }));
   }
 
   if (!process.env.DISABLE_INDEXER) {
     warmTokenMetadataCache().catch((err) =>
-      console.warn('[token-metadata] Cache warm-up failed:', err),
+      logger.warn('Token-metadata cache warm-up failed', { error: String(err) }),
     );
     startGasAnalyticsScheduler();
     startPortfolioScanner();
@@ -80,9 +83,8 @@ async function main() {
   attachWebSocketServer(httpServer);
 
   httpServer.listen(config.port, () => {
-    console.log(`🚀 Soroban Explorer API running on port ${config.port}`);
-    console.log(`🔌 WebSocket event stream available at ws://localhost:${config.port}/ws/events`);
+    logger.info('Soroban Explorer API started', { port: config.port });
   });
 }
 
-main().catch(console.error);
+main().catch((err) => logger.error('Main startup failed', { error: String(err) }));

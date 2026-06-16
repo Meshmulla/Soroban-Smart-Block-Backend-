@@ -75,7 +75,7 @@ export async function runCompactor(): Promise<void> {
 
     // Aggregate totals from decoded payloads
     let totalAmount = BigInt(0);
-    let uniqueParties = new Set<string>();
+    const uniqueParties = new Set<string>();
 
     for (const ev of batch) {
       const d = ev.decoded as Record<string, unknown> | null;

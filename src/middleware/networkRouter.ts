@@ -29,8 +29,8 @@ export function networkRouter(req: Request, res: Response, next: NextFunction): 
       return;
     }
     const profile = getProfile(headerValue);
-    (req as any).network = profile.name;
-    (req as any).networkProfile = profile;
+    req.network = profile.name;
+    req.networkProfile = profile;
     res.setHeader('X-Network', profile.name);
     return next();
   }
@@ -41,8 +41,8 @@ export function networkRouter(req: Request, res: Response, next: NextFunction): 
   for (const net of VALID_NETWORKS) {
     if (subdomain === net || subdomain.startsWith(`${net}-`)) {
       const profile = getProfile(net);
-      (req as any).network = profile.name;
-      (req as any).networkProfile = profile;
+      req.network = profile.name;
+      req.networkProfile = profile;
       res.setHeader('X-Network', profile.name);
       return next();
     }
@@ -51,8 +51,8 @@ export function networkRouter(req: Request, res: Response, next: NextFunction): 
   // 3. Default: use the network this server instance was started with
   const defaultNetwork = (process.env.STELLAR_NETWORK ?? 'testnet') as NetworkName;
   const profile = getProfile(defaultNetwork);
-  (req as any).network = profile.name;
-  (req as any).networkProfile = profile;
+  req.network = profile.name;
+  req.networkProfile = profile;
   res.setHeader('X-Network', profile.name);
   next();
 }

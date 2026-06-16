@@ -1,4 +1,3 @@
-/// <reference path="./types/redis.d.ts" />
 import { config } from './config';
 
 const CACHE_URL = config.cacheUrl ?? 'memory://';

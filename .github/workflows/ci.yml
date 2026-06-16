@@ -46,6 +46,10 @@ jobs:
 
       - run: npx prisma db push --accept-data-loss
 
+      - run: npx prisma validate
+
+      - run: npm run lint
+
       - run: npm test
 
       - run: npm run build

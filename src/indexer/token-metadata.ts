@@ -133,6 +133,7 @@ async function simulateViewCall(
  */
 function buildSimulateTx(hostFn: xdr.HostFunction): any {
   // Import lazily to avoid circular deps at module load time
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { TransactionBuilder, Account, Operation, BASE_FEE } = require('@stellar/stellar-sdk');
   const DUMMY_SOURCE = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
   const account = new Account(DUMMY_SOURCE, '0');

@@ -305,6 +305,7 @@ class SorobanEventWorker {
     if (this.isProcessing) return;
     this.isProcessing = true;
     try {
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const last = await getLastIndexedLedger();
         if (last >= targetLedger) return;

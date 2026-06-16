@@ -58,6 +58,7 @@ async function streamTransactions(
   let cursor: string | undefined;
   let total = 0;
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const rows = await prismaRead.transaction.findMany({
       where,
@@ -91,6 +92,7 @@ async function streamEvents(
   let cursor: string | undefined;
   let total = 0;
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const rows = await prismaRead.event.findMany({
       where,
@@ -177,11 +179,11 @@ async function streamWalletHistory(
   let cursor: string | undefined;
   let total = 0;
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const rows = await prismaRead.transaction.findMany({
       where,
       orderBy: [{ ledgerSequence: 'asc' }, { id: 'asc' }],
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       take: BATCH_SIZE,
       select: {
         id: true,

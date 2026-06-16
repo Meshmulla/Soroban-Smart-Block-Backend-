@@ -27,6 +27,7 @@ export async function archiveRawXdr(): Promise<ArchivalResult> {
 
   let cursor: string | undefined;
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const rows = await prisma.transaction.findMany({
       where: {
