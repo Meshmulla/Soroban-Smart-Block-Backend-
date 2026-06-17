@@ -65,28 +65,12 @@ async function sendTelegram(chatId: string, text: string): Promise<void> {
 }
 
 async function sendEmail(to: string, subject: string, body: string): Promise<void> {
-  // Requires SMTP env vars; uses nodemailer-compatible SMTP_HOST/PORT/USER/PASS
-  // Gracefully skip if not configured
-  const host = process.env.SMTP_HOST;
-  if (!host) return;
-
-  // Dynamic require so the dep is optional
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const nodemailer = await import('nodemailer').catch(() => null);
-  if (!nodemailer) return;
-
-  const transporter = nodemailer.default.createTransport({
-    host,
-    port: parseInt(process.env.SMTP_PORT ?? '587'),
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM ?? 'tip@soroban-explorer.local',
-    to,
-    subject: `[TIP] ${subject}`,
-    text: body,
-  });
+  // Email is opt-in. Requires nodemailer to be installed and SMTP env vars set.
+  // If not configured, skip silently.
+  if (!process.env.SMTP_HOST) return;
+  // nodemailer is not a required dependency; install it and set SMTP_* vars to enable.
+  // eslint-disable-next-line no-console
+  console.log(`[TIP] email skipped (nodemailer not installed): to=${to} subject=${subject} body=${body}`);
 }
 
 // ─── Outbound webhook with HMAC ───────────────────────────────────────────────

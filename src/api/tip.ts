@@ -6,7 +6,7 @@
  */
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { submitManual } from '../tip/collectors';
 import { rescore, deduplicateAdvisories } from '../tip/correlator';
 import { dispatchNotifications } from '../tip/notifier';
@@ -202,8 +202,8 @@ tipRouter.post('/subscriptions', async (req: Request, res: Response) => {
 
   const sub = await db.tipSubscription.upsert({
     where: { channel_target: { channel: parsed.data.channel, target: parsed.data.target } },
-    update: { active: true, filters: parsed.data.filters ?? null },
-    create: { ...parsed.data, filters: parsed.data.filters ?? null },
+    update: { active: true, filters: (parsed.data.filters ?? null) as Prisma.InputJsonValue },
+    create: { ...parsed.data, filters: (parsed.data.filters ?? null) as Prisma.InputJsonValue },
   });
   res.status(201).json(sub);
 });
