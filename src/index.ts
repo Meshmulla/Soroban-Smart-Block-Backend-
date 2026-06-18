@@ -27,6 +27,8 @@ import { startSystemicMonitor } from './indexer/systemicMonitor';
 import { startNetworkIndexer } from './indexer/network-indexer';
 import { startEmergencyIndexer } from './indexer/emergency-indexer';
 import { startHealthScoreScheduler } from './indexer/health-scorer';
+import { startPrivacyDetector } from './indexer/privacy-background-detector';
+import { attachPrivacyWebSocket } from './ws/privacyBroadcaster';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './logger';
 
@@ -89,10 +91,16 @@ async function main() {
     startHealthScoreScheduler().catch((err) =>
       logger.warn('Health score scheduler failed to start', { error: String(err) }),
     );
+    try {
+      startPrivacyDetector();
+    } catch (err) {
+      logger.warn('Privacy detector failed to start', { error: String(err) });
+    }
   }
 
   const httpServer = createServer(app);
   attachWebSocketServer(httpServer);
+  attachPrivacyWebSocket(httpServer);
 
   httpServer.listen(config.port, () => {
     logger.info('Soroban Explorer API started', { port: config.port });

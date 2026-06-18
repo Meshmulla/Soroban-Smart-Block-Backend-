@@ -34,6 +34,7 @@ import { benchmarkRouter } from './benchmarks';
 import { networkRouter } from './network';
 import { emergencyBaseRouter } from './emergency-router';
 import { stellarRouter } from './stellar';
+import { privacyRouter } from './privacy';
 
 export const router = Router();
 
@@ -71,3 +72,4 @@ router.use('/benchmarks', benchmarkRouter);
 router.use('/network', networkRouter);
 router.use('/emergency', emergencyBaseRouter);
 router.use('/stellar', stellarRouter);
+router.use('/privacy', privacyRouter);

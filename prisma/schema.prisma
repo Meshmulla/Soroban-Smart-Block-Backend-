@@ -185,6 +185,142 @@ model ZkpVerificationEvent {
   @@index([contractAddress, ledgerSequence])
 }
 
+enum PrivacyProtocol {
+  SHIELDED_TRANSFER
+  ZK_SNARK
+  ZK_STARK
+  BULLETPROOF
+  STEALTH_ADDRESS
+  MIXER
+  PRIVATE_VOTING
+  OFF_CHAIN_DATA
+  ENCRYPTED_STATE
+  DIFFERENTIAL_PRIVACY
+}
+
+enum PrivacyGuarantee {
+  SENDER_PRIVACY
+  RECIPIENT_PRIVACY
+  AMOUNT_PRIVACY
+  ASSET_TYPE_PRIVACY
+  VOTE_PRIVACY
+  FULL_PRIVACY
+}
+
+model PrivacyTransaction {
+  id                       String            @id @default(cuid())
+  txHash                   String            @unique @map("tx_hash")
+  protocols                PrivacyProtocol[]
+  guarantees               PrivacyGuarantee[]
+  cryptographicPrimitives  Json?             @map("cryptographic_primitives")
+  anonymitySetSize         Int?              @map("anonymity_set_size")
+  effectiveAnonymitySet    Int?              @map("effective_anonymity_set")
+  privacyScore             Float?            @map("privacy_score")
+  riskScore                Float?            @map("risk_score")
+  totalValue               String?           @map("total_value")
+  usdValue                 Float?            @map("usd_value")
+  assetType                String?           @map("asset_type")
+  contractAddresses        String[]          @map("contract_addresses")
+  participants             String[]
+  participantCount         Int               @default(0) @map("participant_count")
+  ledgerSequence           Int               @map("ledger_sequence")
+  timestamp                DateTime
+
+  @@index([protocols])
+  @@index([timestamp])
+  @@index([privacyScore])
+  @@index([riskScore])
+  @@index([anonymitySetSize])
+  @@map("privacy_transactions")
+}
+
+model PrivacyAnalytics {
+  id                 String   @id @default(cuid())
+  timestamp          DateTime
+  period             String
+  totalPrivateTx     Int      @map("total_private_tx")
+  totalTx            Int      @map("total_tx")
+  totalVolume        String   @map("total_volume")
+  privacyShare       Float    @map("privacy_share")
+  volumeShare        Float?   @map("volume_share")
+  byProtocol         Json     @map("by_protocol")
+  avgAnonymitySet    Float?   @map("avg_anonymity_set")
+  maxAnonymitySet    Int?     @map("max_anonymity_set")
+  medianAnonymitySet Float?   @map("median_anonymity_set")
+  avgPrivacyScore    Float?   @map("avg_privacy_score")
+  avgRiskScore       Float?   @map("avg_risk_score")
+  deAnonymizedCount  Int?     @map("de_anonymized_count")
+  uniqueUsers        Int?     @map("unique_users")
+  uniqueContracts    Int?     @map("unique_contracts")
+
+  @@index([timestamp(sort: Desc)])
+  @@index([period, timestamp])
+  @@map("privacy_analytics")
+}
+
+model PrivacyProtocolDetail {
+  id                          String           @id @default(cuid())
+  protocol                    PrivacyProtocol
+  timestamp                   DateTime
+  period                      String
+  txCount                     Int              @map("tx_count")
+  volume                      String?
+  uniqueUsers                 Int?             @map("unique_users")
+  uniqueContracts             Int?             @map("unique_contracts")
+  avgAnonymitySet             Float?           @map("avg_anonymity_set")
+  cryptographicPrimitivesUsed Json?            @map("cryptographic_primitives_used")
+
+  @@index([protocol, timestamp])
+  @@map("privacy_protocol_details")
+}
+
+model DeAnonymizationFinding {
+  id              String   @id @default(cuid())
+  sourceTx        String   @map("source_tx")
+  targetAddress   String   @map("target_address")
+  technique       String
+  confidence      Float
+  evidence        Json
+  linkedAddresses String[] @map("linked_addresses")
+  probability     Float?
+  detectedAt      DateTime @map("detected_at")
+
+  @@index([targetAddress])
+  @@index([sourceTx])
+  @@index([technique])
+  @@map("de_anonymization_findings")
+}
+
+model PrivacyComplianceReport {
+  id                String   @id @default(cuid())
+  address           String   @unique
+  totalPrivateTx    Int      @map("total_private_tx")
+  protocolsUsed     Json     @map("protocols_used")
+  riskScore         Float?   @map("risk_score")
+  flagged           Boolean  @default(false)
+  flagReason        String?  @map("flag_reason")
+  complianceLabel   String?  @map("compliance_label")
+  linkedAddresses   String[] @map("linked_addresses")
+  lastActivity      DateTime @map("last_activity")
+  reportGeneratedAt DateTime @map("report_generated_at")
+
+  @@index([address])
+  @@index([riskScore])
+  @@map("privacy_compliance_reports")
+}
+
+model AnonymitySetSnapshot {
+  id               String           @id @default(cuid())
+  protocol         PrivacyProtocol
+  contractAddress  String?          @map("contract_address")
+  setSize          Int              @map("set_size")
+  effectiveSetSize Int?             @map("effective_set_size")
+  timestamp        DateTime
+
+  @@index([protocol, timestamp(sort: Desc)])
+  @@map("anonymity_set_snapshots")
+}
+
 model SessionAuthorization {
   id                String   @id @default(cuid())
   eventId           String   @unique
