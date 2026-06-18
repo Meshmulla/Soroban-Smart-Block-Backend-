@@ -11,6 +11,7 @@ import { processYieldEvent } from './yield-distribution';
 import { processYieldOpportunityEvent } from './yield-optimizer';
 import { dispatchWebhooks } from '../webhooks/dispatcher';
 import { maybeActivateFromTransferEvent } from './sac-account-activator';
+import { processPoolEvent, looksLikePoolEvent } from './dex/pool-detector';
 
 /**
  * Parse DiagnosticEvents from a raw TransactionMeta XDR (base64).
@@ -211,6 +212,21 @@ async function storeEvent(event: LedgerEvent): Promise<number> {
   dispatchWebhooks({ ...broadcastPayload, topicSymbol }).catch((err) =>
     console.error('[webhook] dispatch error:', err),
   );
+
+  // Institutional DEX Analytics: detect AMM pools and maintain real-time
+  // reserves from swap/liquidity/sync events (gated by a cheap symbol check).
+  // Non-blocking — never lets a pool-tracking failure stall the pipeline.
+  if (looksLikePoolEvent(eventType, topicSymbol)) {
+    processPoolEvent({
+      contractAddress: event.contractId,
+      eventType,
+      topicSymbol,
+      decoded: decoded as Record<string, unknown> | null,
+      transactionHash: event.transactionHash,
+      ledgerSequence: event.ledgerSequence,
+      ledgerCloseTime: event.ledgerCloseTime,
+    }).catch((err) => console.error('[dex-analytics] pool event error:', err));
+  }
 
   // Track governance-related events and proposals
   import('./governance').then(({ processGovernanceEvent }) =>

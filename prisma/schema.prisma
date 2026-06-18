@@ -1917,3 +1917,139 @@ model StellarNetworkHealth {
 
   @@map("stellar_network_health")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Institutional DEX Analytics Engine
+// Pool detection + real-time (event-sourced) reserve tracking, metric
+// computation (TVL/volume/fees/APR/IL), arbitrage detection, and historical
+// snapshots. Reserves are maintained from swap/liquidity/sync events so the
+// engine works without per-protocol storage readers.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model DexPool {
+  id             String  @id @default(cuid())
+  poolAddress    String  @unique
+  protocol       String  @default("unknown") // soroswap | aquarius | phoenix | comet | unknown
+  poolType       String  @default("constant_product") // constant_product | stable | weighted
+  factoryAddress String?
+
+  // Token metadata
+  tokenA         String
+  tokenB         String
+  tokenASymbol   String?
+  tokenBSymbol   String?
+  tokenADecimals Int     @default(7)
+  tokenBDecimals Int     @default(7)
+  feeBps         Int     @default(30) // fee tier in basis points
+
+  // Real-time reserves (string for BigInt precision)
+  reserveA    String @default("0")
+  reserveB    String @default("0")
+  totalShares String @default("0")
+
+  // Latest computed metrics (denormalised for fast listing/sorting)
+  tvlUsd       Float  @default(0)
+  volume1hUsd  Float  @default(0)
+  volume24hUsd Float  @default(0)
+  volume7dUsd  Float  @default(0)
+  volume30dUsd Float  @default(0)
+  fees24hUsd   Float  @default(0)
+  aprPct       Float  @default(0)
+  priceAUsd    Float?
+  priceBUsd    Float?
+
+  // Risk
+  ilRiskScore Float? // 0-100 concentrated-liquidity / IL risk
+
+  firstSeenLedger Int?
+  lastEventLedger Int?
+  lastSyncedAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  swaps     PoolSwap[]
+  snapshots PoolSnapshot[]
+
+  @@index([protocol])
+  @@index([tvlUsd])
+  @@index([volume24hUsd])
+  @@index([aprPct])
+  @@index([tokenA])
+  @@index([tokenB])
+}
+
+model PoolSwap {
+  id              String   @id @default(cuid())
+  poolAddress     String
+  transactionHash String?
+  ledgerSequence  Int
+  ledgerCloseTime DateTime
+  tokenIn         String
+  tokenOut        String
+  amountIn        String   @default("0")
+  amountOut       String   @default("0")
+  amountInUsd     Float?
+  feeUsd          Float?
+  trader          String?
+  createdAt       DateTime @default(now())
+
+  pool DexPool @relation(fields: [poolAddress], references: [poolAddress])
+
+  @@index([poolAddress, ledgerCloseTime])
+  @@index([ledgerCloseTime])
+}
+
+model PoolSnapshot {
+  id             String   @id @default(cuid())
+  poolAddress    String
+  ledgerSequence Int?
+  reserveA       String   @default("0")
+  reserveB       String   @default("0")
+  tvlUsd         Float    @default(0)
+  volume24hUsd   Float    @default(0)
+  fees24hUsd     Float    @default(0)
+  aprPct         Float    @default(0)
+  priceAUsd      Float?
+  priceBUsd      Float?
+  snapshotAt     DateTime @default(now())
+
+  pool DexPool @relation(fields: [poolAddress], references: [poolAddress])
+
+  @@index([poolAddress, snapshotAt])
+  @@index([snapshotAt])
+}
+
+model ArbitrageOpportunity {
+  id              String    @id @default(cuid())
+  tokenA          String
+  tokenB          String
+  pairKey         String // canonical token-pair key
+  buyPool         String // pool where the token is cheaper
+  sellPool        String
+  buyPriceUsd     Float
+  sellPriceUsd    Float
+  spreadPct       Float
+  estProfitUsd    Float     @default(0)
+  optimalTradeUsd Float     @default(0)
+  status          String    @default("open") // open | closed
+  detectedAt      DateTime  @default(now())
+  closedAt        DateTime?
+
+  @@index([status])
+  @@index([detectedAt])
+  @@index([spreadPct])
+  @@index([pairKey, status])
+}
+
+model TokenPrice {
+  id           String   @id @default(cuid())
+  tokenAddress String   @unique
+  symbol       String?
+  priceUsd     Float
+  source       String   @default("pool") // pool | stable | reference
+  confidence   Float    @default(0.5)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([symbol])
+}

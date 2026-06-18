@@ -35,6 +35,7 @@ import { networkRouter } from './network';
 import { emergencyBaseRouter } from './emergency-router';
 import { stellarRouter } from './stellar';
 import { privacyRouter } from './privacy';
+import { dexAnalyticsRouter } from './dex-analytics';
 
 export const router = Router();
 
@@ -48,6 +49,7 @@ router.use('/render', renderRouter);
 router.use('/simulate', simulateRouter);
 router.use('/verify', verifyRouter);
 router.use('/dex', dexRouter);
+router.use('/dex-analytics', dexAnalyticsRouter);
 router.use('/protocol', protocolRouter);
 router.use('/nft', nftRouter);
 router.use('/alerts', alertsRouter);
