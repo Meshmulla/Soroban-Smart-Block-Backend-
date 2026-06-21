@@ -2813,55 +2813,25 @@ model PredictiveApiKey {
   @@map("predictive_api_keys")
 }
 
-// ─── CAP-0077: Consensus Asset-Freeze ─────────────────────────────────────────
+// ─── Issue #301: Protocol Economic Dashboard ───────────────────────────────────
 
-model FrozenLedgerKey {
-  id              String   @id @default(cuid())
-  ledgerKey       String   @unique
-  contractAddress String?
-  frozenAtLedger  Int
-  frozenAtTime    DateTime
-  reason          String?
-  active          Boolean  @default(true)
-  frozenBy        String?  // account that triggered the freeze
-  metadata        Json?    // extensible metadata
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+// Pre-aggregated protocol economics snapshot — fees, burn, and network revenue
+// per time bucket. Populated by the protocolEconomics indexer service.
+model ProtocolEconomicsSnapshot {
+  id             String   @id @default(cuid())
+  bucket         String   // "hour" | "day" | "week"
+  bucketStart    DateTime
+  bucketEnd      DateTime
+  txCount        Int      // total transactions in this bucket
+  totalFees      Float    // sum of all feeCharged values (stroops)
+  feeBurn        Float    // fees destroyed (base reserve * txCount; estimated burn)
+  networkRevenue Float    // totalFees - feeBurn (surplus retained by the network)
+  avgFee         Float    // average fee per transaction
+  successCount   Int      // successful transactions
+  failedCount    Int      // failed transactions
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  @@index([contractAddress])
-  @@index([active])
-  @@index([frozenAtLedger(sort: Desc)])
-}
-
-model FreezeViolation {
-  id              String   @id @default(cuid())
-  transactionHash String   @unique
-  contractAddress String?
-  ledgerSequence  Int
-  ledgerCloseTime DateTime
-  frozenKeys      Json
-  severity        String   // "low" | "medium" | "high" | "critical"
-  resolution      String?  // "pending" | "resolved" | "false_positive"
-  resolvedBy      String?
-  resolvedAt      DateTime?
-  createdAt       DateTime @default(now())
-
-  @@index([transactionHash])
-  @@index([severity])
-  @@index([resolvedAt])
-}
-
-model AuditLog {
-  id            String   @id @default(cuid())
-  actor         String
-  action        String
-  target        String
-  previousState Json?
-  newState      Json?
-  reason        String?
-  timestamp     DateTime @default(now())
-
-  @@index([actor])
-  @@index([action])
-  @@index([target])
+  @@unique([bucket, bucketStart])
+  @@index([bucket, bucketStart])
 }
