@@ -24,6 +24,11 @@ import { errorHandler } from './middleware/errorHandler';
 import { logger } from './logger';
 import { feedOrchestrator } from './feed/orchestrator';
 import { startPriceUpdater } from './services/pricing/price-updater';
+import { apiKeyAuth } from './middleware/apiKeyAuth';
+import { auditLogMiddleware } from './middleware/auditLog';
+import { startAbuseDetection } from './services/abuse-detection';
+import { adminApiKeysRouter } from './api/admin/api-keys';
+import { billingRouter } from './services/stripe-billing';
 
 // Stub functions for features requiring missing Prisma schema models
 function attachPrivacyWebSocket(_server: unknown): void {
@@ -52,11 +57,15 @@ app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(networkRouter);
+// Auth must resolve before rate limiting so tier is known
+app.use(apiKeyAuth);
 app.use(tieredRateLimit);
 app.use(metricsMiddleware);
 app.use(sanitizeInputs);
 app.use(i18nMiddleware);
 app.use(replicaGuard);
+// Audit log captures status + rate limit headers after response
+app.use(auditLogMiddleware);
 
 app.use(coldStorageRouter);
 
@@ -64,6 +73,8 @@ app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.get('/api/docs.json', (_req, res) => res.json(swaggerSpec));
 
 app.use('/api/v1', router);
+app.use('/api/admin/api-keys', adminApiKeysRouter);
+app.use('/api/billing', billingRouter);
 
 app.get('/metrics', async (_req, res) => {
   res.set('Content-Type', registry.contentType);
@@ -120,6 +131,13 @@ async function main() {
     logger.info('Price updater started');
   } catch (err) {
     logger.warn('Price updater failed to start', { error: String(err) });
+  }
+
+  // Start ML-based abuse detection scanner
+  try {
+    startAbuseDetection();
+  } catch (err) {
+    logger.warn('Abuse detection failed to start', { error: String(err) });
   }
 
   // Initialize Feed Orchestrator with WebSocket support

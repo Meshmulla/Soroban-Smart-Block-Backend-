@@ -1209,26 +1209,33 @@ model Developer {
 }
 
 model DevApiKey {
-  id            String    @id
-  developerId   String
-  keyPrefix     String
-  keyHash       String
-  name          String
-  permissions   Json      @default("{}")
-  allowedIps    Json?
-  allowedDomains Json?
-  expiresAt     DateTime?
-  lastUsedAt    DateTime?
-  status        String    @default("active")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                String    @id
+  developerId       String
+  keyPrefix         String
+  keyHash           String
+  name              String
+  permissions       Json      @default("{}")
+  allowedIps        Json?
+  allowedDomains    Json?
+  allowedEndpoints  Json?     // endpoint whitelist (optional)
+  tier              String    @default("free") // "free" | "developer" | "pro" | "enterprise"
+  rateLimitOverride Int?      // custom req/min override
+  revokedAt         DateTime?
+  usageCount        Int       @default(0)
+  expiresAt         DateTime?
+  lastUsedAt        DateTime?
+  status            String    @default("active")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   developer     Developer     @relation(fields: [developerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   usageRecords  UsageRecord[]
 
   @@index([developerId])
   @@index([keyPrefix])
+  @@index([keyHash])
   @@index([status])
+  @@index([tier])
 }
 
 model DevWebhook {
@@ -3391,4 +3398,55 @@ model ArchivalAppeal {
 
   @@index([slashId])
   @@map("archival_appeals")
+}
+
+// =========================================================================
+// Migration: 20260623120000_distributed_rate_limiting
+// Distributed Rate Limiting, API Key Auth, Audit Logging, Abuse Detection
+// =========================================================================
+
+model ApiAuditLog {
+  id                 String   @id @default(cuid())
+  apiKeyId           String?
+  keyName            String?
+  tier               String   @default("unauthenticated")
+  ip                 String
+  method             String
+  endpoint           String
+  statusCode         Int
+  responseTimeMs     Int      @default(0)
+  rateLimitRemaining Int?
+  rateLimitLimit     Int?
+  userAgent          String?
+  requestId          String?
+  region             String?
+  isRateLimited      Boolean  @default(false)
+  month              String   // "YYYY-MM" — matches partition key
+  createdAt          DateTime @default(now())
+
+  @@index([apiKeyId])
+  @@index([ip])
+  @@index([createdAt(sort: Desc)])
+  @@index([endpoint])
+  @@index([isRateLimited])
+}
+
+model AbuseEvent {
+  id           String    @id @default(cuid())
+  pattern      String    // "credential_stuffing" | "scraping" | "ddos" | "sequential_pagination" | "rapid_auth_failure"
+  ip           String?
+  apiKeyId     String?
+  endpoint     String?
+  score        Float     @default(0)
+  action       String    @default("monitor") // "monitor" | "throttle" | "block" | "captcha"
+  blockedUntil DateTime?
+  evidence     Json?
+  resolvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([ip])
+  @@index([apiKeyId])
+  @@index([pattern])
+  @@index([createdAt(sort: Desc)])
+  @@index([blockedUntil])
 }
