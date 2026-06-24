@@ -96,3 +96,24 @@ model FailedItem {
   @@index([itemType, dead])
   @@index([ledger])
 }
+
+// Issue #286: per-ledger contract storage state changes
+model ContractStateChange {
+  id              String   @id @default(cuid())
+  contractAddress String
+  ledger          Int
+  ledgerCloseTime DateTime
+  storageKey      String   // XDR base64 of ScVal key
+  storageKeyHuman String?  // human-readable decoded key
+  valueBefore     String?  // XDR base64 of ScVal, null if created
+  valueAfter      String?  // XDR base64 of ScVal, null if deleted
+  valueHuman      String?  // human-readable decoded valueAfter
+  operation       String   // create | update | delete
+  transactionHash String?
+  createdAt       DateTime @default(now())
+
+  @@index([contractAddress, ledger])
+  @@index([contractAddress, storageKey])
+  @@index([ledger])
+  @@index([transactionHash])
+}
