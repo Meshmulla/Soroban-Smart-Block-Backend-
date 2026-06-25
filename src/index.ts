@@ -35,6 +35,7 @@ import { writeFile, mkdir } from 'fs/promises';
 import { resolve } from 'path';
 import { apiKeyAuth } from './middleware/apiKeyAuth';
 import { auditLogMiddleware } from './middleware/auditLog';
+import { asyncHandler } from './middleware/asyncHandler';
 import { billingRouter } from './services/stripe-billing';
 
 let isShuttingDown = false;
@@ -63,7 +64,24 @@ function startFeeAggregator(): void {
 const app = express();
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors());
+
+// Build an origin allowlist from CORS_ALLOWED_ORIGINS (comma-separated URLs).
+// Production requires an explicit list; other envs fall back to '*'.
+const corsOrigin: cors.CorsOptions['origin'] = (() => {
+  const raw = process.env.CORS_ALLOWED_ORIGINS?.trim();
+  if (raw) return raw.split(',').map((o) => o.trim());
+  if (config.nodeEnv === 'production') return false;
+  return '*';
+})();
+
+app.use(
+  cors({
+    origin: corsOrigin,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key', 'X-Request-Id'],
+    credentials: true,
+  }),
+);
 // Correlation IDs first — requestId is needed by morgan token and logger.
 app.use(correlationMiddleware);
 morgan.token('request-id', (req) => (req as express.Request).requestId ?? '-');
@@ -84,7 +102,12 @@ app.use(auditLogMiddleware);
 
 app.use(coldStorageRouter);
 
-app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+// Interactive Swagger UI is disabled in production unless ENABLE_DOCS=true.
+// The raw schema endpoints remain available for tooling/codegen in all envs.
+const docsEnabled = config.nodeEnv !== 'production' || process.env.ENABLE_DOCS === 'true';
+if (docsEnabled) {
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
 app.get('/api/docs.json', (_req, res) => res.json(swaggerSpec));
 app.get('/api/v1/openapi.json', (_req, res) => res.json(swaggerSpec));
 
