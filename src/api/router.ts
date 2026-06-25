@@ -11,11 +11,6 @@
  *   - Kebab-case, matching the file name where possible
  *   - No trailing slashes
  *   - oracle-audit mounts under /oracles/audit (avoids root wildcard conflict)
- *
- * NOTE: Only routers that compile against the current Prisma schema are
- * mounted here. Additional routers exist in src/api/ for advanced features
- * (arbitrage, MEV, privacy, etc.) but depend on Prisma models not yet in
- * the schema. Those will be mounted once the models are added.
  */
 
 import { Router } from 'express';
@@ -85,3 +80,30 @@ router.use('/nft', nftRouter);
 // ── Bridge Tracker ─────────────────────────────────────────────────────────────
 import { bridgeTrackerRouter } from './bridge-tracker';
 router.use('/bridge-tracker', bridgeTrackerRouter);
+
+// ── Privacy ───────────────────────────────────────────────────────────────────
+import { privacyRouter } from './privacy';
+router.use('/privacy', privacyRouter);
+
+// ── Emergency Response ────────────────────────────────────────────────────────
+import { emergencyBaseRouter } from './emergency-router';
+router.use('/emergency', emergencyBaseRouter);
+
+// ── Webhooks ──────────────────────────────────────────────────────────────────
+import { webhooksRouter } from './webhooks';
+router.use('/webhooks', webhooksRouter);
+
+// ── Authentication ────────────────────────────────────────────────────────────
+import { authRouter } from './auth';
+import { authMultisigRouter } from './authMultisig';
+import { authOAuth2Router } from './authOAuth2';
+import { authProfileRouter } from './authProfile';
+import { authSecurityRouter } from './authSecurity';
+import { authWebhooksRouter } from './authWebhooks';
+
+router.use('/auth', authRouter);
+router.use('/auth/multisig', authMultisigRouter);
+router.use('/auth/oauth2', authOAuth2Router);
+router.use('/auth/profiles', authProfileRouter);
+router.use('/auth/security', authSecurityRouter);
+router.use('/auth/webhooks', authWebhooksRouter);

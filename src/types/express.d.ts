@@ -15,5 +15,14 @@ declare namespace Express {
     traceId: string;
     /** OpenTelemetry / B3 span ID of the root server span. */
     spanId: string;
+    /** Authenticated user populated by requireAuth middleware. */
+    user?: {
+      id: string;
+      address: string;
+      role: import('../auth/rbac').Role;
+      tier: import('../auth/rbac').Tier;
+      sessionId: string;
+      appId: string;
+    };
   }
 }
