@@ -65,7 +65,24 @@ function startFeeAggregator(): void {
 const app = express();
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors());
+
+// Build an origin allowlist from CORS_ALLOWED_ORIGINS (comma-separated URLs).
+// Production requires an explicit list; other envs fall back to '*'.
+const corsOrigin: cors.CorsOptions['origin'] = (() => {
+  const raw = process.env.CORS_ALLOWED_ORIGINS?.trim();
+  if (raw) return raw.split(',').map((o) => o.trim());
+  if (config.nodeEnv === 'production') return false;
+  return '*';
+})();
+
+app.use(
+  cors({
+    origin: corsOrigin,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key', 'X-Request-Id'],
+    credentials: true,
+  }),
+);
 // Correlation IDs first — requestId is needed by morgan token and logger.
 app.use(correlationMiddleware);
 morgan.token('request-id', (req) => (req as express.Request).requestId ?? '-');
@@ -95,10 +112,10 @@ app.use('/api/graphql', yogaHandler as unknown as express.RequestHandler);
 app.use('/api/v1', router);
 app.use('/api/billing', billingRouter);
 
-app.get('/metrics', async (_req, res) => {
+app.get('/metrics', asyncHandler(async (_req, res) => {
   res.set('Content-Type', registry.contentType);
   res.end(await registry.metrics());
-});
+}));
 
 app.get('/health', (_req, res) => {
   if (isShuttingDown) {
