@@ -24,8 +24,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: TypeScript build
+      - name: TypeScript build (src/)
         run: npm run build
+
+      - name: Type-check scripts/
+        run: npm run typecheck:scripts
 
       - name: Prisma field reference validator
         run: npm run validate:prisma

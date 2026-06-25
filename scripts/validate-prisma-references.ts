@@ -1,34 +1,32 @@
 #!/usr/bin/env ts-node
+// @ts-check
 /**
  * scripts/validate-prisma-references.ts
  *
  * Phase 2 — Schema-to-Code Validator
- * Parses prisma/schema.prisma, extracts every model + its fields, then scans
- * all src/ TypeScript files for references to those model names combined with
- * field-like property accesses (e.g. `tx.decodedDescription`) and flags any
- * field that does not exist on the Prisma model.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Parses prisma/schema.prisma, extracts every model + its scalar fields, then
+ * scans all src/**\/*.ts files for Prisma field property accesses and flags any
+ * field that does not exist on the corresponding Prisma model.
  *
  * Phase 3 — Migration Impact Analysis
+ * ─────────────────────────────────────────────────────────────────────────────
  * When invoked with --diff <old-schema-file> it compares the two schemas and
- * reports removed / renamed / type-changed fields together with all source
- * locations that reference them.
+ * reports removed / renamed / type-changed fields with all source locations.
  *
  * Usage:
- *   npx ts-node scripts/validate-prisma-references.ts
- *   npx ts-node scripts/validate-prisma-references.ts --diff prisma/schema.prisma.bak
+ *   npx ts-node -P tsconfig.scripts.json scripts/validate-prisma-references.ts
+ *   npx ts-node -P tsconfig.scripts.json scripts/validate-prisma-references.ts --diff prisma/schema.old.prisma
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 interface ModelField {
   name: string;
-  type: string;
+  typeName: string;
   isOptional: boolean;
   isArray: boolean;
 }
@@ -38,118 +36,140 @@ interface PrismaModel {
   fields: ModelField[];
 }
 
-interface Reference {
+interface Ref {
   file: string;
   line: number;
   column: number;
-  text: string;
+  snippet: string;
   modelName: string;
   fieldName: string;
 }
 
 interface ValidationResult {
-  phantomReferences: Reference[];
-  validReferences: number;
+  phantoms: Ref[];
+  validCount: number;
 }
 
 interface DiffReport {
-  removedFields: Array<{ model: string; field: string; references: Reference[] }>;
-  renamedCandidates: Array<{ model: string; oldField: string; possibleNewField: string }>;
-  typeChangedFields: Array<{ model: string; field: string; oldType: string; newType: string }>;
+  removed: Array<{ model: string; field: string; refs: Ref[] }>;
+  renameCandidates: Array<{ model: string; oldField: string; likelyNewField: string }>;
+  typeChanged: Array<{ model: string; field: string; oldType: string; newType: string }>;
 }
 
-// ---------------------------------------------------------------------------
-// Schema parser
-// ---------------------------------------------------------------------------
+// ─── Schema parser ───────────────────────────────────────────────────────────
 
 export function parsePrismaSchema(schemaPath: string): Map<string, PrismaModel> {
   const content = fs.readFileSync(schemaPath, 'utf-8');
   const models = new Map<string, PrismaModel>();
 
-  // Match model blocks
-  const modelRegex = /^model\s+(\w+)\s*\{([^}]+)\}/gm;
-  let modelMatch: RegExpExecArray | null;
+  // Each model block: model <Name> { ... }
+  // Use a manual scan to handle multi-line blocks robustly
+  let i = 0;
+  while (i < content.length) {
+    const modelKw = content.indexOf('model ', i);
+    if (modelKw === -1) break;
 
-  while ((modelMatch = modelRegex.exec(content)) !== null) {
-    const modelName = modelMatch[1];
-    const body = modelMatch[2];
+    // Make sure 'model' is at start of line (not inside a string)
+    const lineStart = content.lastIndexOf('\n', modelKw);
+    const prefix = content.slice(lineStart + 1, modelKw).trim();
+    if (prefix !== '' && !prefix.startsWith('//')) {
+      i = modelKw + 6;
+      continue;
+    }
+
+    const braceOpen = content.indexOf('{', modelKw);
+    if (braceOpen === -1) break;
+
+    const modelName = content.slice(modelKw + 6, braceOpen).trim();
+    if (!modelName || !/^\w+$/.test(modelName)) {
+      i = braceOpen + 1;
+      continue;
+    }
+
+    // Find matching closing brace
+    let depth = 1;
+    let j = braceOpen + 1;
+    while (j < content.length && depth > 0) {
+      if (content[j] === '{') depth++;
+      else if (content[j] === '}') depth--;
+      j++;
+    }
+
+    const body = content.slice(braceOpen + 1, j - 1);
     const fields: ModelField[] = [];
 
-    const lines = body.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      // Skip blank lines, comments, @@directives, and relation lines
-      if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('@@')) continue;
+    for (const raw of body.split('\n')) {
+      const line = raw.trim();
+      if (!line || line.startsWith('//') || line.startsWith('@@')) continue;
 
-      // Field line: <name> <type>[?|[]] ...
-      const fieldMatch = trimmed.match(/^(\w+)\s+([\w.]+)(\[\])?(\?)?/);
+      // Field: <fieldName> <Type>[?|[]] [modifiers...]
+      const fieldMatch = line.match(/^(\w+)\s+([\w.]+)(\[\])?(\?)?/);
       if (!fieldMatch) continue;
 
-      const fieldName = fieldMatch[1];
-      const fieldType = fieldMatch[2];
+      const name = fieldMatch[1];
+      const typeName = fieldMatch[2];
       const isArray = Boolean(fieldMatch[3]);
       const isOptional = Boolean(fieldMatch[4]);
 
-      // Skip relation fields (they start with uppercase model names but we
-      // only want scalar / Json / primitive fields that appear in select clauses)
-      fields.push({ name: fieldName, type: fieldType, isOptional, isArray });
+      // Skip Prisma relation keywords used as field names
+      if (['@@', '//'].some((p) => name.startsWith(p))) continue;
+
+      fields.push({ name, typeName, isOptional, isArray });
     }
 
     models.set(modelName, { name: modelName, fields });
+    i = j;
   }
 
   return models;
 }
 
-// ---------------------------------------------------------------------------
-// Source scanner
-// ---------------------------------------------------------------------------
+// ─── Source scanner ───────────────────────────────────────────────────────────
 
 /**
- * Build a map of Prisma variable name → model name by scanning `prisma.X.`
- * call sites and `select:` shapes.  This is a heuristic — it catches the
- * common patterns used in this codebase.
+ * Heuristically map local variable names to Prisma model names by inspecting
+ * `prisma.<model>.findMany/findFirst/...` call sites and `.map((varName) =>`.
  */
-function buildVariableModelMap(content: string): Map<string, string> {
+function inferVarModelMap(content: string): Map<string, string> {
   const map = new Map<string, string>();
 
-  // Pattern: prisma.modelName.findMany(...) / findFirst / findUnique / count
-  // variable assigned from that: const [rows, ...] = await Promise.all([prisma.transaction...
-  const prismaCallRegex =
-    /prisma\.(\w+)\.(findMany|findFirst|findUnique|findFirstOrThrow|findUniqueOrThrow|create|update|upsert|delete|count)\s*\(/g;
+  // prisma.transaction.findMany(...) → variable assigned on the left
+  const callRe = /prisma\.(\w+)\.(findMany|findFirst|findUnique|findFirstOrThrow|findUniqueOrThrow|create|update|upsert|delete)\s*\(/g;
   let m: RegExpExecArray | null;
-  while ((m = prismaCallRegex.exec(content)) !== null) {
-    // Try to find preceding variable names in the same statement
-    const before = content.slice(Math.max(0, m.index - 300), m.index);
-    // const txs = await prisma.transaction...
-    const constMatch = before.match(/(?:const|let)\s+(\w+)\s*=\s*(?:await\s+)?$/);
-    if (constMatch) {
-      map.set(constMatch[1], capitalize(m[1]));
-    }
-    // Destructuring: const [txs, total] = await Promise.all([...
-    const destructMatch = before.match(/const\s+\[([^\]]+)\]\s*=\s*await\s+Promise\.all\s*\(\s*\[$/);
-    if (destructMatch) {
-      const vars = destructMatch[1].split(',').map((v) => v.trim());
-      if (vars[0]) map.set(vars[0], capitalize(m[1]));
+
+  while ((m = callRe.exec(content)) !== null) {
+    const modelRaw = m[1];
+    const modelName = modelRaw.charAt(0).toUpperCase() + modelRaw.slice(1);
+    const before = content.slice(Math.max(0, m.index - 400), m.index);
+
+    // const rows = await prisma.model...
+    const simple = before.match(/(?:const|let)\s+(\w+)\s*=\s*(?:await\s+)?$/);
+    if (simple) map.set(simple[1], modelName);
+
+    // const [rows, total] = await Promise.all([...
+    const destruct = before.match(/(?:const|let)\s+\[([^\]]+)\]\s*=\s*await\s+Promise\.all\s*\(\s*\[$/);
+    if (destruct) {
+      const vars = destruct[1].split(',').map((v) => v.trim());
+      if (vars[0]) map.set(vars[0], modelName);
     }
   }
 
-  // Pattern: .map((tx) => or .map((event) =>
-  // We can infer from the variable name alone for common conventions
-  const mapRegex = /\.map\s*\(\s*\((\w+)\)\s*=>/g;
-  while ((m = mapRegex.exec(content)) !== null) {
+  // .map((tx) => ...) — conventional name guesses
+  const mapRe = /\.map\s*\(\s*\((\w+)\)\s*=>/g;
+  const guesses: Array<[string, string]> = [
+    ['tx', 'Transaction'],
+    ['transaction', 'Transaction'],
+    ['event', 'Event'],
+    ['ledger', 'Ledger'],
+    ['contract', 'Contract'],
+    ['wallet', 'SmartWallet'],
+  ];
+
+  while ((m = mapRe.exec(content)) !== null) {
     const varName = m[1];
-    // Guess model from common naming conventions
-    const guesses: [string, string][] = [
-      ['tx', 'Transaction'],
-      ['transaction', 'Transaction'],
-      ['event', 'Event'],
-      ['ledger', 'Ledger'],
-      ['contract', 'Contract'],
-    ];
-    for (const [pattern, model] of guesses) {
-      if (varName === pattern || varName.startsWith(pattern)) {
-        if (!map.has(varName)) map.set(varName, model);
+    for (const [pat, model] of guesses) {
+      if (!map.has(varName) && (varName === pat || varName.startsWith(pat))) {
+        map.set(varName, model);
       }
     }
   }
@@ -157,123 +177,87 @@ function buildVariableModelMap(content: string): Map<string, string> {
   return map;
 }
 
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+function posToLineCol(content: string, index: number): { line: number; col: number } {
+  const before = content.slice(0, index);
+  const line = (before.match(/\n/g) || []).length + 1;
+  const lastNl = before.lastIndexOf('\n');
+  return { line, col: index - lastNl };
 }
 
-function scanFile(
-  filePath: string,
-  models: Map<string, PrismaModel>,
-): { phantom: Reference[]; valid: number } {
+function scanFile(filePath: string, models: Map<string, PrismaModel>): { phantoms: Ref[]; valid: number } {
   const content = fs.readFileSync(filePath, 'utf-8');
   const lines = content.split('\n');
-  const phantom: Reference[] = [];
+  const phantoms: Ref[] = [];
   let valid = 0;
 
-  const varMap = buildVariableModelMap(content);
+  const varMap = inferVarModelMap(content);
 
-  // Scan every occurrence of `varName.fieldName` where varName is in our map
   for (const [varName, modelName] of varMap) {
     const model = models.get(modelName);
     if (!model) continue;
 
-    const pattern = new RegExp(`\\b${varName}\\.(\\w+)`, 'g');
+    // Match <varName>.<identifier> — not followed by ( (method call)
+    const re = new RegExp(`\\b${varName}\\.(\\w+)(?!\\()`, 'g');
     let m: RegExpExecArray | null;
 
-    while ((m = pattern.exec(content)) !== null) {
+    while ((m = re.exec(content)) !== null) {
       const fieldName = m[1];
-      // Skip method calls (they have `(` immediately after)
-      const after = content[m.index + m[0].length];
-      if (after === '(') continue;
+      const { line, col } = posToLineCol(content, m.index);
+      const snippet = (lines[line - 1] || '').trim();
+      const exists = model.fields.some((f) => f.name === fieldName);
 
-      const fieldExists = model.fields.some((f) => f.name === fieldName);
-      // Compute line / column
-      const before = content.slice(0, m.index);
-      const lineNum = before.split('\n').length;
-      const lastNewline = before.lastIndexOf('\n');
-      const col = m.index - lastNewline;
-      const lineText = lines[lineNum - 1] || '';
-
-      if (fieldExists) {
+      if (exists) {
         valid++;
       } else {
-        phantom.push({
-          file: filePath,
-          line: lineNum,
-          column: col,
-          text: lineText.trim(),
-          modelName,
-          fieldName,
-        });
+        phantoms.push({ file: filePath, line, column: col, snippet, modelName, fieldName });
       }
     }
   }
 
-  return { phantom, valid };
+  return { phantoms, valid };
 }
 
-function collectTsFiles(dir: string): string[] {
-  const results: string[] = [];
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
+function collectTs(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...collectTsFiles(full));
-    } else if (entry.isFile() && entry.name.endsWith('.ts')) {
-      results.push(full);
-    }
+    if (entry.isDirectory()) out.push(...collectTs(full));
+    else if (entry.isFile() && entry.name.endsWith('.ts')) out.push(full);
   }
-  return results;
+  return out;
 }
 
-// ---------------------------------------------------------------------------
-// Phase 2 — Validator
-// ---------------------------------------------------------------------------
+// ─── Phase 2: Validator ───────────────────────────────────────────────────────
 
 export function runValidator(schemaPath: string, srcDir: string): ValidationResult {
   const models = parsePrismaSchema(schemaPath);
-  console.log(`📋 Parsed ${models.size} Prisma models from ${schemaPath}`);
+  console.log(`📋  Parsed ${models.size} Prisma models from ${path.relative(process.cwd(), schemaPath)}`);
 
-  const files = collectTsFiles(srcDir);
-  console.log(`🔍 Scanning ${files.length} TypeScript files in ${srcDir}`);
+  const files = collectTs(srcDir);
+  console.log(`🔍  Scanning ${files.length} TypeScript files in ${path.relative(process.cwd(), srcDir)}/\n`);
 
-  const allPhantom: Reference[] = [];
-  let totalValid = 0;
+  const phantoms: Ref[] = [];
+  let validCount = 0;
 
   for (const file of files) {
-    const { phantom, valid } = scanFile(file, models);
-    allPhantom.push(...phantom);
-    totalValid += valid;
+    const r = scanFile(file, models);
+    phantoms.push(...r.phantoms);
+    validCount += r.valid;
   }
 
-  return { phantomReferences: allPhantom, validReferences: totalValid };
+  return { phantoms, validCount };
 }
 
-// ---------------------------------------------------------------------------
-// Phase 3 — Migration Impact Analysis
-// ---------------------------------------------------------------------------
+// ─── Phase 3: Migration impact analysis ──────────────────────────────────────
 
-export function runDiffAnalysis(
-  newSchemaPath: string,
-  oldSchemaPath: string,
-  srcDir: string,
-): DiffReport {
+export function runDiffAnalysis(newSchemaPath: string, oldSchemaPath: string, srcDir: string): DiffReport {
   const newModels = parsePrismaSchema(newSchemaPath);
   const oldModels = parsePrismaSchema(oldSchemaPath);
-  const files = collectTsFiles(srcDir);
+  const files = collectTs(srcDir);
 
-  // Build a set of all references in src/
-  const allRefs: Reference[] = [];
-  for (const file of files) {
-    // We scan against new models to find what's still there;
-    // we'll also check old models.
-    const { phantom } = scanFile(file, oldModels);
-    allRefs.push(...phantom);
-  }
-
-  const removedFields: DiffReport['removedFields'] = [];
-  const renamedCandidates: DiffReport['renamedCandidates'] = [];
-  const typeChangedFields: DiffReport['typeChangedFields'] = [];
+  const removed: DiffReport['removed'] = [];
+  const renameCandidates: DiffReport['renameCandidates'] = [];
+  const typeChanged: DiffReport['typeChanged'] = [];
 
   for (const [modelName, oldModel] of oldModels) {
     const newModel = newModels.get(modelName);
@@ -282,83 +266,71 @@ export function runDiffAnalysis(
       const newField = newModel?.fields.find((f) => f.name === oldField.name);
 
       if (!newField) {
-        // Field removed — find all references to it
-        const refs: Reference[] = [];
+        // Field removed — find every reference across src/
+        const refs: Ref[] = [];
+        const pattern = new RegExp(`\\.${oldField.name}\\b`, 'g');
+
         for (const file of files) {
           const content = fs.readFileSync(file, 'utf-8');
           const lines = content.split('\n');
-          const pattern = new RegExp(`\\.${oldField.name}\\b`, 'g');
           let m: RegExpExecArray | null;
           while ((m = pattern.exec(content)) !== null) {
-            const before = content.slice(0, m.index);
-            const lineNum = before.split('\n').length;
-            const lastNl = before.lastIndexOf('\n');
+            const { line, col } = posToLineCol(content, m.index);
             refs.push({
               file,
-              line: lineNum,
-              column: m.index - lastNl,
-              text: (lines[lineNum - 1] || '').trim(),
+              line,
+              column: col,
+              snippet: (lines[line - 1] || '').trim(),
               modelName,
               fieldName: oldField.name,
             });
           }
         }
-        if (refs.length > 0) {
-          removedFields.push({ model: modelName, field: oldField.name, references: refs });
-        }
 
-        // Rename candidate: new model has a field with similar name
+        if (refs.length > 0) removed.push({ model: modelName, field: oldField.name, refs });
+
+        // Rename candidate: similar name in new model
         if (newModel) {
           for (const nf of newModel.fields) {
-            if (
-              nf.name !== oldField.name &&
-              (nf.name.toLowerCase().includes(oldField.name.toLowerCase().slice(0, 4)) ||
-                oldField.name.toLowerCase().includes(nf.name.toLowerCase().slice(0, 4)))
-            ) {
-              renamedCandidates.push({
-                model: modelName,
-                oldField: oldField.name,
-                possibleNewField: nf.name,
-              });
+            const ol = oldField.name.toLowerCase();
+            const nl = nf.name.toLowerCase();
+            if (nf.name !== oldField.name && (nl.includes(ol.slice(0, 5)) || ol.includes(nl.slice(0, 5)))) {
+              renameCandidates.push({ model: modelName, oldField: oldField.name, likelyNewField: nf.name });
             }
           }
         }
-      } else if (newField.type !== oldField.type) {
-        typeChangedFields.push({
+      } else if (newField.typeName !== oldField.typeName) {
+        typeChanged.push({
           model: modelName,
           field: oldField.name,
-          oldType: oldField.type,
-          newType: newField.type,
+          oldType: oldField.typeName,
+          newType: newField.typeName,
         });
       }
     }
   }
 
-  return { removedFields, renamedCandidates, typeChangedFields };
+  return { removed, renameCandidates, typeChanged };
 }
 
-// ---------------------------------------------------------------------------
-// CLI output
-// ---------------------------------------------------------------------------
+// ─── Output formatters ────────────────────────────────────────────────────────
 
 function printValidationResult(result: ValidationResult): void {
-  const { phantomReferences, validReferences } = result;
+  const { phantoms, validCount } = result;
+  console.log(`✅  Valid field references found  : ${validCount}`);
 
-  console.log(`\n✅ Valid field references found: ${validReferences}`);
-
-  if (phantomReferences.length === 0) {
-    console.log('✅ No phantom Prisma field references detected.\n');
+  if (phantoms.length === 0) {
+    console.log('✅  No phantom Prisma field references detected.\n');
     process.exit(0);
   }
 
-  console.error(`\n❌ Found ${phantomReferences.length} phantom field reference(s):\n`);
-  for (const ref of phantomReferences) {
-    const rel = path.relative(process.cwd(), ref.file);
-    console.error(`  ${rel}:${ref.line}:${ref.column}`);
-    console.error(`    Model  : ${ref.modelName}`);
-    console.error(`    Field  : ${ref.fieldName}  (does not exist)`);
-    console.error(`    Source : ${ref.text}`);
-    console.error('');
+  console.error(`\n❌  ${phantoms.length} phantom field reference(s) detected:\n`);
+  for (const r of phantoms) {
+    const rel = path.relative(process.cwd(), r.file);
+    console.error(`  ${rel}:${r.line}:${r.column}`);
+    console.error(`    model  → ${r.modelName}`);
+    console.error(`    field  → ${r.fieldName}  (not in schema)`);
+    console.error(`    source → ${r.snippet}\n`);
   }
   process.exit(1);
 }
@@ -366,43 +338,40 @@ function printValidationResult(result: ValidationResult): void {
 function printDiffReport(report: DiffReport): void {
   let issues = 0;
 
-  if (report.removedFields.length > 0) {
-    console.error('\n🗑️  REMOVED FIELDS that are still referenced in src/:');
-    for (const { model, field, references } of report.removedFields) {
+  if (report.removed.length) {
+    console.error('\n🗑️   REMOVED fields still referenced in src/:');
+    for (const { model, field, refs } of report.removed) {
       console.error(`\n  ${model}.${field}`);
-      for (const ref of references) {
-        const rel = path.relative(process.cwd(), ref.file);
-        console.error(`    ${rel}:${ref.line}  → ${ref.text}`);
+      for (const r of refs) {
+        console.error(`    ${path.relative(process.cwd(), r.file)}:${r.line}  →  ${r.snippet}`);
         issues++;
       }
     }
   }
 
-  if (report.renamedCandidates.length > 0) {
-    console.warn('\n🔄 POSSIBLE RENAMES (manual review needed):');
-    for (const { model, oldField, possibleNewField } of report.renamedCandidates) {
-      console.warn(`  ${model}.${oldField}  →  possibly ${model}.${possibleNewField}`);
+  if (report.renameCandidates.length) {
+    console.warn('\n🔄  Possible renames (manual review):');
+    for (const { model, oldField, likelyNewField } of report.renameCandidates) {
+      console.warn(`  ${model}.${oldField}  →  possibly  ${model}.${likelyNewField}`);
     }
   }
 
-  if (report.typeChangedFields.length > 0) {
-    console.warn('\n⚠️  TYPE-CHANGED FIELDS:');
-    for (const { model, field, oldType, newType } of report.typeChangedFields) {
-      console.warn(`  ${model}.${field}: ${oldType} → ${newType}`);
+  if (report.typeChanged.length) {
+    console.warn('\n⚠️   Type-changed fields:');
+    for (const { model, field, oldType, newType } of report.typeChanged) {
+      console.warn(`  ${model}.${field}  :  ${oldType}  →  ${newType}`);
     }
   }
 
   if (issues === 0) {
-    console.log('\n✅ Migration impact analysis: no breaking references found.\n');
+    console.log('\n✅  Migration impact analysis: no breaking references found.\n');
   } else {
-    console.error(`\n❌ Migration impact analysis: ${issues} potential break(s) detected.\n`);
+    console.error(`\n❌  Migration impact analysis: ${issues} potential break(s) found.\n`);
     process.exit(1);
   }
 }
 
-// ---------------------------------------------------------------------------
-// Main (only runs when the script is executed directly)
-// ---------------------------------------------------------------------------
+// ─── CLI entry (only when run directly) ──────────────────────────────────────
 
 if (require.main === module) {
   const ROOT = path.resolve(__dirname, '..');
@@ -415,15 +384,13 @@ if (require.main === module) {
   if (diffIdx !== -1) {
     const oldSchema = args[diffIdx + 1];
     if (!oldSchema || !fs.existsSync(oldSchema)) {
-      console.error('Usage: --diff <path-to-old-schema.prisma>');
+      console.error('Usage: validate-prisma-references.ts --diff <old-schema.prisma>');
       process.exit(1);
     }
-    console.log(`\n🔎 Migration impact analysis: ${oldSchema}  →  ${SCHEMA}\n`);
-    const report = runDiffAnalysis(SCHEMA, oldSchema, SRC);
-    printDiffReport(report);
+    console.log(`\n🔎  Migration impact analysis\n    old: ${oldSchema}\n    new: ${SCHEMA}\n`);
+    printDiffReport(runDiffAnalysis(SCHEMA, oldSchema, SRC));
   } else {
-    console.log('\n🔎 Prisma field reference validator\n');
-    const result = runValidator(SCHEMA, SRC);
-    printValidationResult(result);
+    console.log('\n🔎  Prisma field reference validator\n');
+    printValidationResult(runValidator(SCHEMA, SRC));
   }
 }
