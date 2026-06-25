@@ -201,3 +201,91 @@ model FailedItem {
   @@index([itemType, dead])
   @@index([ledger])
 }
+
+// ─── Issue #297: Multi-Chain Identity Graph ───────────────────────────────────
+
+model IdentityGraph {
+  id          String   @id @default(cuid())
+  ownerId     String?
+  displayName String?
+  avatarUrl   String?
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  addresses ChainAddress[]
+  linksOut  IdentityLink[] @relation("sourceIdentity")
+  linksIn   IdentityLink[] @relation("targetIdentity")
+
+  @@index([ownerId])
+}
+
+model ChainAddress {
+  id          String   @id @default(cuid())
+  identityId  String
+  chain       String
+  address     String
+  label       String?
+  verified    Boolean  @default(false)
+  verifyProof String?
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  identity            IdentityGraph  @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  bridgesFrom         BridgeTransfer[] @relation("bridgeFrom")
+  bridgesTo           BridgeTransfer[] @relation("bridgeTo")
+
+  @@unique([chain, address])
+  @@index([identityId])
+  @@index([chain])
+  @@index([address])
+}
+
+model IdentityLink {
+  id               String   @id @default(cuid())
+  sourceIdentityId String
+  targetIdentityId String
+  linkType         String   @default("same-user")
+  confidence       Float    @default(1.0)
+  evidence         Json     @default("[]")
+  createdAt        DateTime @default(now())
+
+  sourceIdentity IdentityGraph @relation("sourceIdentity", fields: [sourceIdentityId], references: [id], onDelete: Cascade)
+  targetIdentity IdentityGraph @relation("targetIdentity", fields: [targetIdentityId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceIdentityId, targetIdentityId])
+  @@index([sourceIdentityId])
+  @@index([targetIdentityId])
+}
+
+model BridgeTransfer {
+  id              String    @id @default(cuid())
+  fromChain       String
+  toChain         String
+  fromAddressId   String?
+  toAddressId     String?
+  fromAddress     String
+  toAddress       String
+  asset           String
+  amount          String
+  bridgeProtocol  String?
+  txHashSource    String?
+  txHashDest      String?
+  status          String    @default("pending")
+  timestamp       DateTime
+  metadata        Json      @default("{}")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  fromChainAddress ChainAddress? @relation("bridgeFrom", fields: [fromAddressId], references: [id])
+  toChainAddress   ChainAddress? @relation("bridgeTo", fields: [toAddressId], references: [id])
+
+  @@index([fromChain, toChain])
+  @@index([fromAddress])
+  @@index([toAddress])
+  @@index([txHashSource])
+  @@index([txHashDest])
+  @@index([timestamp])
+  @@index([status])
+}
