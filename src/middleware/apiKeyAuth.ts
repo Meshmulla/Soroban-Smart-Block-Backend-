@@ -43,8 +43,13 @@ function ipMatchesCidr(ip: string, cidr: string): boolean {
     const addr = ipaddr.process(ip);
     if (cidr.includes('/')) {
       const range = ipaddr.parseCIDR(cidr);
-      if (addr.kind() !== range[0].kind()) return false;
-      return addr.match(range);
+      if (addr.kind() === 'ipv4' && range[0].kind() === 'ipv4') {
+        return (addr as ipaddr.IPv4).match(range as [ipaddr.IPv4, number]);
+      }
+      if (addr.kind() === 'ipv6' && range[0].kind() === 'ipv6') {
+        return (addr as ipaddr.IPv6).match(range as [ipaddr.IPv6, number]);
+      }
+      return false;
     }
     return ipaddr.process(cidr).toString() === addr.toString();
   } catch {

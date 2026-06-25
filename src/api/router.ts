@@ -97,14 +97,6 @@ router.use('/nft', nftRouter);
 import { bridgeTrackerRouter } from './bridge-tracker';
 router.use('/bridge-tracker', bridgeTrackerRouter);
 
-// ── CSV Exports (auth required for all export operations) ─────────────────────
-router.use('/exports', requireApiKey, exportsRouter);
-
-// ── Freeze Management — requires API key; per-mutation adminAuth inside router ─
-router.use('/freeze', requireApiKey, freezeRouter);
-
-// ── Predictive Analytics ──────────────────────────────────────────────────────
-// predict/forecast run ML models — compute-heavy; key required
-router.use('/predict', requireApiKey, predictRouter);
-// forecast.ts exposes alternative model-management paths under /forecast/predict/…
-router.use('/forecast', requireApiKey, forecastRouter);
+// ── Admin ──────────────────────────────────────────────────────────────────────
+import { adminRouter } from './admin';
+router.use('/admin', adminRouter);
