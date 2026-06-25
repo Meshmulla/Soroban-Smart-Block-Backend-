@@ -85,3 +85,7 @@ router.use('/nft', nftRouter);
 // ── Bridge Tracker ─────────────────────────────────────────────────────────────
 import { bridgeTrackerRouter } from './bridge-tracker';
 router.use('/bridge-tracker', bridgeTrackerRouter);
+
+// ── Admin ──────────────────────────────────────────────────────────────────────
+import { adminRouter } from './admin';
+router.use('/admin', adminRouter);
