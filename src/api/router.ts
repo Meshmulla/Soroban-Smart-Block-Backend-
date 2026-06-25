@@ -46,6 +46,12 @@ import { tokenPricesRouter } from './token-prices';
 import { portfolioRouter } from './portfolio';
 import { alertsRouter } from './alerts';
 
+// ── DEX Analytics, MEV & Arbitrage Intelligence ────────────────────────────────
+import { arbitrageRouter } from './arbitrage';
+import { dexAnalyticsRouter } from './dex-analytics';
+import { dexRouter } from './dex';
+import { mevRouter } from './mev';
+
 export const router = Router();
 
 // ── Core Stellar / Soroban ────────────────────────────────────────────────────
@@ -81,3 +87,9 @@ router.use('/data-market', dataMarketRouter);
 // ── NFT Collection Discovery, Rarity Engine, Marketplace Analytics & Portfolio ──
 import { nftRouter } from './nft';
 router.use('/nft', nftRouter);
+
+// ── DEX Analytics, MEV & Arbitrage Intelligence ────────────────────────────────
+router.use('/arbitrage', arbitrageRouter);
+router.use('/dex-analytics', dexAnalyticsRouter);
+router.use('/dex', dexRouter);
+router.use('/mev', mevRouter);

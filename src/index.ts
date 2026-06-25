@@ -35,6 +35,10 @@ import { resolve } from 'path';
 import { apiKeyAuth } from './middleware/apiKeyAuth';
 import { auditLogMiddleware } from './middleware/auditLog';
 import { billingRouter } from './services/stripe-billing';
+import { startArbitrageScanner as startArbitrageScannerImpl } from './indexer/arbitrage-scanner';
+import { startPoolPriceMonitor as startPoolPriceMonitorImpl } from './indexer/pool-price-monitor';
+import { startFeeAggregator as startFeeAggregatorImpl } from './indexer/fee-aggregator';
+import { attachArbitrageWebSocket as attachArbitrageWebSocketImpl } from './ws/arbitrageBroadcaster';
 
 let isShuttingDown = false;
 let wssRef: ReturnType<typeof attachWebSocketServer> | null = null;
@@ -49,17 +53,37 @@ function attachPrivacyWebSocket(_server: unknown): void {
 function attachComposabilityWebSocket(_server: unknown): void {
   logger.debug('Composability WebSocket disabled — schema models not yet available');
 }
-function attachArbitrageWebSocket(_server: unknown): void {
-  logger.debug('Arbitrage WebSocket disabled — schema models not yet available');
+function attachArbitrageWebSocket(server: unknown): void {
+  try {
+    attachArbitrageWebSocketImpl(server);
+    logger.debug('Arbitrage WebSocket attached');
+  } catch (err) {
+    logger.warn('Arbitrage WebSocket attachment failed', { error: String(err) });
+  }
 }
 function startPoolPriceMonitor(): void {
-  logger.debug('Pool price monitor disabled — schema models not yet available');
+  try {
+    startPoolPriceMonitorImpl();
+    logger.debug('Pool price monitor started');
+  } catch (err) {
+    logger.warn('Pool price monitor failed to start', { error: String(err) });
+  }
 }
 function startArbitrageScanner(): void {
-  logger.debug('Arbitrage scanner disabled — schema models not yet available');
+  try {
+    startArbitrageScannerImpl();
+    logger.debug('Arbitrage scanner started');
+  } catch (err) {
+    logger.warn('Arbitrage scanner failed to start', { error: String(err) });
+  }
 }
 function startFeeAggregator(): void {
-  logger.debug('Fee aggregator disabled — schema models not yet available');
+  try {
+    startFeeAggregatorImpl();
+    logger.debug('Fee aggregator started');
+  } catch (err) {
+    logger.warn('Fee aggregator failed to start', { error: String(err) });
+  }
 }
 
 const app = express();
@@ -224,21 +248,9 @@ async function main() {
   attachArbitrageWebSocket(httpServer);
 
   if (!process.env.DISABLE_INDEXER) {
-    try {
-      startPoolPriceMonitor();
-    } catch (err) {
-      logger.warn('Pool price monitor failed to start', { error: String(err) });
-    }
-    try {
-      startArbitrageScanner();
-    } catch (err) {
-      logger.warn('Arbitrage scanner failed to start', { error: String(err) });
-    }
-    try {
-      startFeeAggregator();
-    } catch (err) {
-      logger.warn('Fee aggregator failed to start', { error: String(err) });
-    }
+    startPoolPriceMonitor();
+    startArbitrageScanner();
+    startFeeAggregator();
     try {
       startBridgeWorker();
     } catch (err) {
